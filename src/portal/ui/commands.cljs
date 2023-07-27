@@ -3,6 +3,7 @@
             [clojure.pprint :as pp]
             [clojure.set :as set]
             [clojure.string :as str]
+            [clojure.walk :as walk]
             [cognitect.transit :as t]
             [portal.async :as a]
             [portal.colors :as c]
@@ -664,6 +665,18 @@
        [row column]))
     (meta value)))
 
+(defn keywordize-keys
+  "Like clojure.walk/keywordize-keys but will also str/lower-case keys."
+  [value]
+  (walk/postwalk
+   (fn [value]
+     (if-not (map? value)
+       value
+       (update-keys value #(if-not (string? %)
+                             %
+                             (keyword (str/lower-case %))))))
+   value))
+
 (defn select-columns
   "Select column from list-of-maps or map-of-maps."
   [value ks]
@@ -897,7 +910,8 @@
    #'clojure.core/concat      {:predicate (fn [& args] (every? coll? args))}
    #'clojure.core/contains?   {:predicate (fn [coll & args]
                                             (and (coll? coll) (= (count args) 1)))}
-   #'clojure.core/merge       {:predicate (fn [& args] (every? map? args))}})
+   #'clojure.core/merge       {:predicate (fn [& args] (every? map? args))}
+   #'clojure.walk/keywordize-keys {}})
 
 (def ^:private portal-data-commands
   {#'pprint         {:name      'portal.data/pprint
@@ -906,7 +920,8 @@
                      :name      'portal.data/transpose-map}
    #'select-columns {:predicate (some-fn coll-of-maps map-of-maps)
                      :args      (comp pick-many columns)
-                     :name      'portal.data/select-columns}})
+                     :name      'portal.data/select-columns}
+   #'keywordize-keys {:name 'portal.data/keywordize-keys}})
 
 (defn register!
   ([var] (register! var {}))
