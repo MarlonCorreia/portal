@@ -22,6 +22,65 @@
          :portal.viewer/table
          {:columns [:n :min #_:p25 #_:p50 #_:p75 #_:p90 #_:p95 #_:p99 :max :mean #_:mad :sum :loc]}})))
 
+(defn ->bar-chart [pstats]
+  (let [stats (:stats @pstats)]
+    ^{:portal.viewer/default :portal.viewer/vega-lite}
+    {:$schema "https://vega.github.io/schema/vega-lite/v5.json",
+     :mark {:type :bar :tooltip true}
+     :encoding
+     {:color {:field :pid}
+      :xOffset {:field :pid}
+      :x {:field :stats :sort [:min :max :mean]}
+      :y {:field :time  :title "time (ms)" :type :quantitative}}
+     :data
+     {:values
+      (mapcat
+       (fn [[pid {:keys [min max mean]}]]
+         (let [pid (pr-str pid)]
+           [{:stats :min  :pid pid :time (/ min 1e6)}
+            {:stats :max  :pid pid :time (/ max 1e6)}
+            {:stats :mean :pid pid :time (/ mean 1e6)}]))
+       stats)}}))
+
+(comment (->bar-chart pstats))
+
+(defn ->pie-chart [pstats]
+  (let [stats (:stats @pstats)]
+    ^{:portal.viewer/default :portal.viewer/vega-lite}
+    {:$schema "https://vega.github.io/schema/vega-lite/v5.json",
+     :mark {:type :arc :innerRadius 100 :tooltip true}
+     :encoding
+     {:theta  {:field :sum :type :quantitative :stack :normalize :title :time}
+      :color  {:field :pid :type :nominal}}
+     :data
+     {:values
+      (map (fn [[pid {:keys [n sum]}]]
+             {:pid (pr-str pid) :calls n :sum sum}) stats)}}))
+
+(comment (->pie-chart pstats))
+
+(defn ->pie-stats [pstats]
+  (let [stats (:stats @pstats)]
+    ^{:portal.viewer/default :portal.viewer/vega-lite}
+    {:$schema "https://vega.github.io/schema/vega-lite/v5.json"
+     :mark {:type :arc :innerRadius 40 :tooltip true}
+     :encoding
+     {:facet {:field :stats
+              :columns 2
+              :sort [:min :max :mean]}
+      :theta  {:field :value :type :quantitative :stack :normalize}
+      :color  {:field :pid :type :nominal}}
+     :data
+     {:values
+      (mapcat (fn [[pid {:keys [min max mean n]}]]
+                [{:pid pid :stats :min  :value min}
+                 {:pid pid :stats :max  :value max}
+                 {:pid pid :stats :mean :value mean}
+                 {:pid pid :stats :n    :value n}])
+              stats)}}))
+
+(comment (->pie-stats pstats))
+
 (defn add-tap-handler!
   "Adds a simple handler that logs `profile` stats output with `tap>`."
   [{:keys [ns-pattern handler-id]
@@ -43,7 +102,8 @@
 
 (defn do-work []
   (dotimes [_ 5]
-    (p :get-x (get-x))
+    (p :get-x (get-x)))
+  (dotimes [_ 10]
     (p :get-y (get-y))))
 
 (defn run []
@@ -57,4 +117,9 @@
   (add-tap p/submit)
   (add-tap-handler! {})
   (profile {} (do-work))
-  (remove-tap p/submit))
+  (remove-tap p/submit)
+
+  (def pstats (second (profiled {} (do-work))))
+  (format-pstats pstats)
+  (->pie-chart pstats)
+  (->bar-chart pstats))
